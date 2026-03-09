@@ -3,69 +3,111 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
-const { createRoom, joinRoom, getRoom } = require("./rooms");
+const {
+  createRoom,
+  joinRoom,
+  addMetadata,
+  getRoom,
+  removeSocket
+} = require("./room");
 
 const app = express();
+
 app.use(cors());
 
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-  },
+  cors: { origin: "*" },
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
+
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+
+  console.log("connected:", socket.id);
+
 
   // CREATE ROOM
-  socket.on("create-room", () => {
-    const roomId = createRoom();
 
-    socket.join(roomId);
+  socket.on("create-room", ({ name }) => {
 
-    joinRoom(roomId, socket.id);
+    const room = createRoom(socket.id, name);
 
-    const roomLink = `http://localhost:5173/room/${roomId}`;
+    socket.join(room.roomId);
+
+    const roomLink = `http://localhost:5173/room/${room.roomId}`;
+    console.log("Room created");
 
     socket.emit("room-created", {
-      roomId,
-      roomLink,
+      roomId: room.roomId,
+      roomLink
     });
 
-    console.log("Room created:", roomId);
   });
 
+
+
   // JOIN ROOM
-  socket.on("join-room", ({ roomId }) => {
+
+  socket.on("join-room", ({ roomId, name }) => {
+
     const room = getRoom(roomId);
 
     if (!room) {
-      socket.emit("error", "Room does not exist");
+      socket.emit("room-error", "Room does not exist");
       return;
     }
 
+    joinRoom(roomId, socket.id, name);
+
     socket.join(roomId);
 
-    joinRoom(roomId, socket.id);
-
+    // receiver gets sender name + metadata
     socket.emit("joined-room", {
-      roomId,
-      users: room.users,
+      ownerName: room.owner.name,
+      metadata: room.metadata
     });
 
-    socket.to(roomId).emit("user-joined", {
+    // notify owner
+    io.to(room.owner.socketId).emit("receiver-joined", {
       socketId: socket.id,
+      name
     });
 
-    console.log(socket.id, "joined", roomId);
   });
+
+
+
+  // FILE METADATA FROM OWNER
+
+  socket.on("file-metadata", ({ roomId, files }) => {
+
+    const newFiles = addMetadata(roomId, files);
+
+    if (!newFiles) return;
+
+    // send metadata to receivers
+    socket.to(roomId).emit("new-files", newFiles);
+
+    // send metadata + fileId back to sender
+    socket.emit("metadata-ack", newFiles);
+
+  });
+
+
 
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+
+    console.log("disconnected:", socket.id);
+
+    removeSocket(socket.id);
+
   });
+
 });
+
 
 server.listen(3000, () => {
   console.log("Server running on port 3000");
