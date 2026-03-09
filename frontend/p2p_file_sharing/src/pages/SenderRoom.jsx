@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useLocation} from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import {
-  Radio, Copy, Check, Plus, File, Image, Video, Music,
-  FileText, Archive, Users, Upload, X, ChevronDown
+  Copy, Check, Plus, File, Image, Video, Music,
+  FileText, Archive, Users, Upload, X, Send, Link2
 } from 'lucide-react';
 import socket from '../lib/socket';
 import { formatBytes, truncate } from '../lib/utils';
@@ -26,16 +26,14 @@ function getIconType(type) {
 export default function SenderRoom() {
   const { roomId } = useParams();
   const location = useLocation();
-//   const navigate = useNavigate();
   const senderName = location.state?.name || 'You';
 
   const [copied, setCopied] = useState(false);
   const [receivers, setReceivers] = useState([]);
-  const [files, setFiles] = useState([]); // { fileId, name, size, type, file (File object) }
-  const [transferProgress, setTransferProgress] = useState({}); // { `${fileId}-${receiverId}`: progress }
+  const [files, setFiles] = useState([]);
+  const [transferProgress, setTransferProgress] = useState({});
   const [isDragging, setIsDragging] = useState(false);
 
-  // Map of fileId -> actual File object (for WebRTC sending)
   const filesMapRef = useRef(new Map());
   const fileInputRef = useRef(null);
 
@@ -69,11 +67,6 @@ export default function SenderRoom() {
     socket.on('receiver-left', ({ socketId }) => {
       setReceivers(prev => prev.filter(r => r.socketId !== socketId));
     });
-
-    // socket.on('metadata-ack', (newFiles) => {
-    //   // Server acknowledged and returned fileIds
-    //   // We already added them optimistically, but update with server fileIds
-    // });
 
     socket.on('file-requested', handleFileRequest);
     socket.on('webrtc-answer', handleAnswer);
@@ -111,11 +104,7 @@ export default function SenderRoom() {
   const addFiles = (fileList) => {
     const newFiles = Array.from(fileList);
     const metadata = newFiles.map(f => ({ name: f.name, size: f.size, type: f.type }));
-
-    // Emit metadata to server
     socket.emit('file-metadata', { roomId, files: metadata });
-
-    // Listen for metadata-ack to get fileIds
     const handleAck = (ackFiles) => {
       ackFiles.forEach((ack, i) => {
         const file = newFiles[i];
@@ -124,7 +113,6 @@ export default function SenderRoom() {
       });
       socket.off('metadata-ack', handleAck);
     };
-
     socket.on('metadata-ack', handleAck);
   };
 
@@ -144,113 +132,142 @@ export default function SenderRoom() {
     filesMapRef.current.delete(fileId);
   };
 
+  const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="scanline-bg grain min-h-screen flex flex-col">
       {/* Header */}
-      <nav className="flex items-center justify-between px-6 py-4 md:px-10 border-b border-surface-3">
-        <div className="flex items-center gap-2">
-          <Radio className="text-accent" size={20} />
-          <span className="font-display font-bold text-sm tracking-tight">warp</span>
-        </div>
+      <nav className="flex items-center justify-between px-6 py-3.5 md:px-8 border-b border-dim">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-slow" />
-            Sending as <span className="text-zinc-300 font-medium">{senderName}</span>
+          <div className="w-6 h-6 rounded bg-accent/10 border border-accent/20 flex items-center justify-center">
+            <span className="text-accent font-mono text-[10px] font-bold">W</span>
+          </div>
+          <span className="font-mono text-xs text-muted">/</span>
+          <span className="font-mono text-xs text-secondary">room</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded bg-surface border border-dim">
+            <Send size={10} className="text-accent" />
+            <span className="font-mono text-[10px] text-secondary">
+              Sending as <span className="text-[var(--text-primary)] font-medium">{senderName}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+            <span className="font-mono text-[10px] text-muted">live</span>
           </div>
         </div>
       </nav>
 
       <div className="flex-1 flex flex-col lg:flex-row">
-        {/* Left: Files panel */}
-        <div className="flex-1 p-6 md:p-10">
-          {/* Share link bar */}
+        {/* Left panel */}
+        <div className="flex-1 p-6 md:p-8 lg:p-10">
+          {/* Share link */}
           <div className="mb-8">
-            <p className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Share this link</p>
+            <div className="flex items-center gap-2 mb-2.5">
+              <Link2 size={12} className="text-accent" />
+              <span className="font-mono text-[10px] text-muted uppercase tracking-widest">Invite Link</span>
+            </div>
             <div className="flex items-center gap-2">
-              <div className="flex-1 px-4 py-2.5 rounded-lg bg-surface-1 border border-surface-3 text-sm text-zinc-400 truncate font-mono text-xs">
+              <div className="flex-1 px-3.5 py-2.5 rounded bg-base border border-dim font-mono text-[11px] text-muted truncate select-all">
                 {shareLink}
               </div>
               <button
                 onClick={copyLink}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-surface-2 border border-surface-4 text-sm text-zinc-300 hover:bg-surface-3 transition-colors shrink-0"
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded border text-xs font-medium transition-all duration-200 ${
+                  copied
+                    ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                    : 'bg-surface border-dim text-secondary hover:bg-overlay hover:text-[var(--text-primary)]'
+                }`}
               >
-                {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                {copied ? <Check size={12} /> : <Copy size={12} />}
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
           </div>
 
-          {/* Drop zone / file list */}
+          {/* Files header */}
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-300">
-              Files {files.length > 0 && <span className="text-zinc-500 font-normal">({files.length})</span>}
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="font-mono text-xs text-secondary uppercase tracking-wider">
+                Payload
+              </h2>
+              {files.length > 0 && (
+                <span className="font-mono text-[10px] text-muted px-1.5 py-0.5 rounded bg-surface border border-dim">
+                  {files.length} file{files.length !== 1 ? 's' : ''} &middot; {formatBytes(totalSize)}
+                </span>
+              )}
+            </div>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
             >
-              <Plus size={14} /> Add Files
+              <Plus size={13} /> Add
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleFileInput}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" multiple onChange={handleFileInput} className="hidden" />
           </div>
 
+          {/* File drop / list */}
           {files.length === 0 ? (
             <div
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`flex flex-col items-center justify-center py-20 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-200 ${
+              className={`flex flex-col items-center justify-center py-16 rounded-lg border-2 border-dashed cursor-pointer transition-all duration-200 ${
                 isDragging
-                  ? 'border-accent/50 bg-accent/5'
-                  : 'border-surface-4 hover:border-zinc-600 bg-surface-1/50'
+                  ? 'border-accent/40 bg-accent/[0.04]'
+                  : 'border-dim hover:border-mid bg-raised/50'
               }`}
             >
-              <Upload size={32} className="text-zinc-600 mb-3" />
-              <p className="text-sm text-zinc-400 mb-1">Drop files here or click to browse</p>
-              <p className="text-xs text-zinc-600">Any file type, no size limit</p>
+              <div className="w-12 h-12 rounded-lg bg-surface border border-dim flex items-center justify-center mb-4">
+                <Upload size={20} className="text-muted" />
+              </div>
+              <p className="text-sm text-secondary mb-1">Drop files here or click to browse</p>
+              <p className="font-mono text-[10px] text-muted">any type &middot; no size limit</p>
             </div>
           ) : (
             <div
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
-              className={`space-y-2 p-1 rounded-2xl transition-all ${isDragging ? 'bg-accent/5 ring-2 ring-accent/20' : ''}`}
+              className={`space-y-1.5 rounded-lg transition-all ${isDragging ? 'bg-accent/[0.03] ring-1 ring-accent/20' : ''}`}
             >
-              {files.map((f) => {
+              {files.map((f, idx) => {
                 const iconType = getIconType(f.type);
-                const Icon = FILE_ICONS[iconType] || File;
+                const FileIcon = FILE_ICONS[iconType] || File;
                 return (
-                  <div key={f.fileId} className="flex items-center gap-3 p-3 rounded-xl bg-surface-1 border border-surface-3 group">
-                    <div className="w-9 h-9 rounded-lg bg-surface-3 flex items-center justify-center shrink-0">
-                      <Icon size={16} className="text-zinc-400" />
+                  <div
+                    key={f.fileId}
+                    className="flex items-center gap-3 px-3.5 py-3 rounded-lg bg-raised border border-dim group hover:border-mid transition-colors"
+                    style={{ animationDelay: `${idx * 40}ms` }}
+                  >
+                    <div className="w-8 h-8 rounded bg-surface border border-dim flex items-center justify-center shrink-0">
+                      <FileIcon size={14} className="text-muted" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200 truncate">{f.name}</p>
-                      <p className="text-xs text-zinc-500">{formatBytes(f.size)}</p>
+                      <p className="text-sm text-[var(--text-primary)] truncate">{f.name}</p>
+                      <p className="font-mono text-[10px] text-muted">{formatBytes(f.size)}</p>
                     </div>
 
-                    {/* Per-receiver progress for this file */}
-                    <div className="flex items-center gap-1">
+                    {/* Progress per receiver */}
+                    <div className="flex items-center gap-2">
                       {receivers.map(r => {
                         const key = `${f.fileId}-${r.socketId}`;
                         const prog = transferProgress[key];
                         if (prog === undefined) return null;
+                        const done = prog >= 100;
                         return (
-                          <div key={r.socketId} className="flex items-center gap-1" title={`${r.name}: ${prog}%`}>
-                            <div className="w-16 h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                          <div key={r.socketId} className="flex items-center gap-1.5" title={`${r.name}: ${prog}%`}>
+                            <div className="w-14 h-1 rounded-full bg-dim overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all duration-300 ${prog >= 100 ? 'bg-emerald-400' : 'bg-accent'}`}
+                                className={`h-full rounded-full transition-all duration-300 ${done ? 'bg-green-500' : 'bg-accent'}`}
                                 style={{ width: `${prog}%` }}
                               />
                             </div>
-                            <span className="text-[10px] text-zinc-500 w-7 text-right">{prog}%</span>
+                            <span className={`font-mono text-[9px] w-6 text-right ${done ? 'text-green-500' : 'text-muted'}`}>
+                              {done ? '✓' : `${prog}%`}
+                            </span>
                           </div>
                         );
                       })}
@@ -258,70 +275,66 @@ export default function SenderRoom() {
 
                     <button
                       onClick={() => removeFile(f.fileId)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-zinc-500 hover:text-zinc-300 transition-all"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted hover:text-secondary transition-all"
                     >
-                      <X size={14} />
+                      <X size={13} />
                     </button>
                   </div>
                 );
               })}
 
-              {/* Drag hint */}
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center py-3 rounded-xl border border-dashed border-surface-4 cursor-pointer hover:border-zinc-600 transition-colors"
+                className="flex items-center justify-center py-2.5 rounded-lg border border-dashed border-dim cursor-pointer hover:border-mid transition-colors"
               >
-                <p className="text-xs text-zinc-500">Drop more files or click to add</p>
+                <span className="font-mono text-[10px] text-muted">+ drop or click to add more</span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Right: Receivers panel */}
-        <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-surface-3 p-6 md:p-8">
+        {/* Right panel - Receivers */}
+        <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l border-dim p-6 md:p-8 bg-raised/30">
           <div className="flex items-center gap-2 mb-5">
-            <Users size={16} className="text-zinc-500" />
-            <h2 className="text-sm font-semibold text-zinc-300">
+            <Users size={13} className="text-muted" />
+            <span className="font-mono text-[10px] text-muted uppercase tracking-widest">
               Receivers
-              {receivers.length > 0 && (
-                <span className="ml-1.5 text-zinc-500 font-normal">({receivers.length})</span>
-              )}
-            </h2>
+            </span>
+            {receivers.length > 0 && (
+              <span className="font-mono text-[10px] text-accent ml-auto">{receivers.length}</span>
+            )}
           </div>
 
           {receivers.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-12 h-12 rounded-full bg-surface-2 border border-surface-4 flex items-center justify-center mx-auto mb-3">
-                <Users size={20} className="text-zinc-600" />
+            <div className="text-center py-10">
+              <div className="w-10 h-10 rounded-lg bg-surface border border-dim flex items-center justify-center mx-auto mb-3">
+                <Users size={16} className="text-muted" />
               </div>
-              <p className="text-sm text-zinc-500 mb-1">No one here yet</p>
-              <p className="text-xs text-zinc-600">Share the link above to invite people</p>
+              <p className="text-xs text-muted mb-0.5">Waiting for peers</p>
+              <p className="font-mono text-[10px] text-muted">Share the link to invite</p>
             </div>
           ) : (
             <div className="space-y-2">
               {receivers.map((r) => (
-                <div
-                  key={r.socketId}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-surface-1 border border-surface-3"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/30 to-cyan-600/30 flex items-center justify-center text-xs font-bold text-accent uppercase">
+                <div key={r.socketId} className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-surface border border-dim">
+                  <div className="w-7 h-7 rounded bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-mono font-bold text-accent uppercase">
                     {r.name.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-200 truncate">{r.name}</p>
-                    <p className="text-[11px] text-zinc-500">Connected</p>
+                    <p className="text-xs text-[var(--text-primary)] truncate">{r.name}</p>
+                    <p className="font-mono text-[9px] text-muted">connected</p>
                   </div>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                 </div>
               ))}
             </div>
           )}
 
-          {/* Transfer summary */}
+          {/* Transfer log */}
           {receivers.length > 0 && files.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-surface-3">
-              <h3 className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-3">Transfer Status</h3>
-              <div className="space-y-3">
+            <div className="mt-6 pt-5 border-t border-dim">
+              <span className="font-mono text-[10px] text-muted uppercase tracking-widest block mb-3">Transfer Log</span>
+              <div className="space-y-2.5">
                 {receivers.map(r => {
                   const fileProgresses = files.map(f => {
                     const key = `${f.fileId}-${r.socketId}`;
@@ -331,20 +344,25 @@ export default function SenderRoom() {
                   if (fileProgresses.length === 0) return null;
 
                   return (
-                    <div key={r.socketId} className="space-y-1.5">
-                      <p className="text-xs text-zinc-400 font-medium">{r.name}</p>
-                      {fileProgresses.map((fp, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <p className="text-[11px] text-zinc-500 truncate flex-1">{truncate(fp.name, 20)}</p>
-                          <div className="w-20 h-1 rounded-full bg-surface-3">
-                            <div
-                              className={`h-full rounded-full ${fp.progress >= 100 ? 'bg-emerald-400' : 'bg-accent'}`}
-                              style={{ width: `${fp.progress}%` }}
-                            />
+                    <div key={r.socketId} className="space-y-1">
+                      <p className="font-mono text-[10px] text-secondary">{r.name}</p>
+                      {fileProgresses.map((fp, i) => {
+                        const done = fp.progress >= 100;
+                        return (
+                          <div key={i} className="flex items-center gap-2">
+                            <p className="font-mono text-[9px] text-muted truncate flex-1">{truncate(fp.name, 18)}</p>
+                            <div className="w-12 h-0.5 rounded-full bg-dim">
+                              <div
+                                className={`h-full rounded-full ${done ? 'bg-green-500' : 'bg-accent'}`}
+                                style={{ width: `${fp.progress}%` }}
+                              />
+                            </div>
+                            <span className={`font-mono text-[9px] w-6 text-right ${done ? 'text-green-500' : 'text-muted'}`}>
+                              {done ? '✓' : `${fp.progress}%`}
+                            </span>
                           </div>
-                          <span className="text-[10px] text-zinc-500 w-7 text-right">{fp.progress}%</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   );
                 })}
