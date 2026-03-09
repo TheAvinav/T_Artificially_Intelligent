@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Radio, Download, File, Image, Video, Music,
-  FileText, Archive, CheckCircle2, Loader2
+  Download, File, Image, Video, Music,
+  FileText, Archive, CheckCircle2, Loader2, Link2
 } from 'lucide-react';
 import socket from '../lib/socket';
-import { formatBytes} from '../lib/utils';
+import { formatBytes } from '../lib/utils';
 import { useReceiverWebRTC } from '../hooks/useWebRTC';
 import Modal from '../components/Modal';
 
@@ -29,7 +29,6 @@ export default function ReceiverRoom() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // If came from Home page, we have state; otherwise need to join
   const [name, setName] = useState(location.state?.name || '');
   const [ownerName, setOwnerName] = useState(location.state?.ownerName || '');
   const [files, setFiles] = useState(location.state?.metadata || []);
@@ -37,7 +36,7 @@ export default function ReceiverRoom() {
   const [showJoinModal, setShowJoinModal] = useState(!location.state?.name);
   const [joinName, setJoinName] = useState('');
   const [error, setError] = useState('');
-  const [downloadStatus, setDownloadStatus] = useState({}); // fileId -> { status, progress, receivedSize }
+  const [downloadStatus, setDownloadStatus] = useState({});
   const [roomClosed, setRoomClosed] = useState(false);
 
   const handleReceiverProgress = useCallback((fileId, receivedSize) => {
@@ -51,11 +50,9 @@ export default function ReceiverRoom() {
   }, []);
 
   const handleFileReceived = useCallback((fileId, blob) => {
-    // Find the file metadata to get name and type
     setFiles(currentFiles => {
       const fileMeta = currentFiles.find(f => f.fileId === fileId);
       if (fileMeta) {
-        // Trigger download
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -130,16 +127,16 @@ export default function ReceiverRoom() {
 
   if (roomClosed) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6">
-        <div className="text-center space-y-3">
-          <div className="w-16 h-16 rounded-full bg-surface-2 border border-surface-4 flex items-center justify-center mx-auto">
-            <Radio size={28} className="text-zinc-600" />
+      <div className="scanline-bg grain min-h-screen flex flex-col items-center justify-center px-6">
+        <div className="text-center space-y-4">
+          <div className="w-14 h-14 rounded-lg bg-raised border border-dim flex items-center justify-center mx-auto">
+            <span className="font-mono text-lg text-muted">×</span>
           </div>
-          <h1 className="text-xl font-bold text-zinc-200">Room Closed</h1>
-          <p className="text-sm text-zinc-500">The sender has disconnected and the room no longer exists.</p>
+          <h1 className="text-lg font-semibold">Room Closed</h1>
+          <p className="text-sm text-muted max-w-xs">The sender disconnected. This room no longer exists.</p>
           <button
             onClick={() => navigate('/')}
-            className="mt-4 px-5 py-2 rounded-lg bg-surface-2 border border-surface-4 text-sm text-zinc-300 hover:bg-surface-3 transition-colors"
+            className="mt-2 px-5 py-2 rounded bg-surface border border-dim text-sm text-secondary hover:bg-overlay transition-colors"
           >
             Back to Home
           </button>
@@ -149,49 +146,58 @@ export default function ReceiverRoom() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="scanline-bg grain min-h-screen flex flex-col">
       {/* Header */}
-      <nav className="flex items-center justify-between px-6 py-4 md:px-10 border-b border-surface-3">
-        <div className="flex items-center gap-2">
-          <Radio className="text-accent" size={20} />
-          <span className="font-display font-bold text-sm tracking-tight">warp</span>
+      <nav className="flex items-center justify-between px-6 py-3.5 md:px-8 border-b border-dim">
+        <div className="flex items-center gap-3">
+          <div className="w-6 h-6 rounded bg-accent/10 border border-accent/20 flex items-center justify-center">
+            <span className="text-accent font-mono text-[10px] font-bold">W</span>
+          </div>
+          <span className="font-mono text-xs text-muted">/</span>
+          <span className="font-mono text-xs text-secondary">receive</span>
         </div>
         {joined && (
-          <div className="flex items-center gap-3 text-xs text-zinc-500">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-slow" />
-            Connected to <span className="text-zinc-300 font-medium">{ownerName}'s room</span>
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-surface border border-dim">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+            <span className="font-mono text-[10px] text-muted">
+              connected to <span className="text-secondary">{ownerName}</span>
+            </span>
           </div>
         )}
       </nav>
 
-      {/* Main content */}
+      {/* Main */}
       {joined ? (
-        <div className="flex-1 p-6 md:p-10 max-w-3xl mx-auto w-full">
+        <div className="flex-1 p-6 md:p-10 max-w-2xl mx-auto w-full">
+          {/* Room info */}
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-zinc-100 mb-1">
-              {ownerName}'s Files
-            </h1>
-            <p className="text-sm text-zinc-500">
-              Pick the files you want to receive. They'll transfer directly from {ownerName}.
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 rounded bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-mono font-bold text-accent uppercase">
+                {ownerName.charAt(0)}
+              </div>
+              <h1 className="text-xl font-semibold">{ownerName}'s files</h1>
+            </div>
+            <p className="text-sm text-muted ml-9">
+              Select files to receive. They transfer directly from {ownerName} via WebRTC.
             </p>
           </div>
 
+          {/* File list */}
           {files.length === 0 ? (
-            <div className="text-center py-20 rounded-2xl bg-surface-1 border border-surface-3">
-              <Loader2 size={24} className="text-zinc-600 mx-auto mb-3 animate-spin" />
-              <p className="text-sm text-zinc-400">Waiting for files...</p>
-              <p className="text-xs text-zinc-600 mt-1">The sender hasn't added any files yet</p>
+            <div className="text-center py-16 rounded-lg bg-raised border border-dim">
+              <Loader2 size={20} className="text-muted mx-auto mb-3 animate-spin" />
+              <p className="text-sm text-secondary">Waiting for files...</p>
+              <p className="font-mono text-[10px] text-muted mt-1">The sender hasn't added anything yet</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5 stagger">
               {files.map((f) => {
                 const iconType = getIconType(f.type);
-                const Icon = FILE_ICONS[iconType] || File;
+                const FileIcon = FILE_ICONS[iconType] || File;
                 const status = downloadStatus[f.fileId];
                 const isDownloading = status?.status === 'downloading';
                 const isComplete = status?.status === 'complete';
 
-                // Calculate progress percentage from receivedSize
                 let progressPct = 0;
                 if (isDownloading && f.size > 0 && status.receivedSize) {
                   progressPct = Math.min(99, Math.round((status.receivedSize / f.size) * 100));
@@ -201,16 +207,16 @@ export default function ReceiverRoom() {
                 return (
                   <div
                     key={f.fileId}
-                    className="flex items-center gap-3 p-4 rounded-xl bg-surface-1 border border-surface-3 group transition-all hover:border-surface-4"
+                    className="animate-fade-up opacity-0 flex items-center gap-3 px-4 py-3.5 rounded-lg bg-raised border border-dim group hover:border-mid transition-all"
                   >
-                    <div className="w-10 h-10 rounded-lg bg-surface-3 flex items-center justify-center shrink-0">
-                      <Icon size={18} className="text-zinc-400" />
+                    <div className="w-9 h-9 rounded bg-surface border border-dim flex items-center justify-center shrink-0">
+                      <FileIcon size={15} className="text-muted" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200 truncate">{f.name}</p>
-                      <p className="text-xs text-zinc-500">{formatBytes(f.size)}</p>
+                      <p className="text-sm text-[var(--text-primary)] truncate">{f.name}</p>
+                      <p className="font-mono text-[10px] text-muted">{formatBytes(f.size)}</p>
                       {isDownloading && (
-                        <div className="mt-1.5 w-full h-1 rounded-full bg-surface-3 overflow-hidden">
+                        <div className="mt-2 w-full h-1 rounded-full bg-dim overflow-hidden">
                           <div
                             className="h-full rounded-full bg-accent transition-all duration-300"
                             style={{ width: `${progressPct}%` }}
@@ -220,21 +226,21 @@ export default function ReceiverRoom() {
                     </div>
 
                     {isComplete ? (
-                      <div className="flex items-center gap-1.5 text-emerald-400">
-                        <CheckCircle2 size={16} />
-                        <span className="text-xs font-medium">Done</span>
+                      <div className="flex items-center gap-1.5 text-green-500">
+                        <CheckCircle2 size={14} />
+                        <span className="font-mono text-[10px] font-medium">done</span>
                       </div>
                     ) : isDownloading ? (
                       <div className="flex items-center gap-1.5 text-accent">
-                        <Loader2 size={16} className="animate-spin" />
-                        <span className="text-xs font-medium">{progressPct}%</span>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span className="font-mono text-[10px] font-medium">{progressPct}%</span>
                       </div>
                     ) : (
                       <button
                         onClick={() => handleDownload(f.fileId)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-accent bg-accent/10 hover:bg-accent/20 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-accent bg-accent/10 border border-accent/20 hover:bg-accent/20 transition-colors"
                       >
-                        <Download size={14} />
+                        <Download size={12} />
                         Receive
                       </button>
                     )}
@@ -246,25 +252,31 @@ export default function ReceiverRoom() {
         </div>
       ) : null}
 
-      {/* Join Modal (when accessing via direct link) */}
+      {/* Join Modal */}
       <Modal open={showJoinModal} onClose={() => navigate('/')}>
-        <h2 className="font-display text-lg font-bold mb-1">Join Room</h2>
-        <p className="text-sm text-zinc-500 mb-5">Enter your name to join this file sharing room.</p>
-        <label className="block text-xs text-zinc-400 mb-1.5 font-medium">Your Name</label>
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-5 h-5 rounded bg-accent/10 border border-accent/20 flex items-center justify-center">
+            <Link2 size={10} className="text-accent" />
+          </div>
+          <h2 className="font-semibold text-sm">Join Room</h2>
+        </div>
+        <p className="text-xs text-muted mb-5 ml-7">Enter your name to join this file sharing room.</p>
+        <label className="block font-mono text-[10px] text-muted mb-1.5 uppercase tracking-wider">Name</label>
         <input
           type="text"
           value={joinName}
           onChange={(e) => setJoinName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-          placeholder="e.g. Jamie"
+          placeholder="Your name"
           autoFocus
-          className="w-full px-4 py-2.5 rounded-lg bg-surface-0 border border-surface-4 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-accent/50 transition-colors"
+          className="w-full px-3 py-2.5 rounded bg-base border border-dim text-sm placeholder:text-muted focus:outline-none focus:border-accent/40 transition-colors font-mono"
         />
         {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
         <button
           onClick={handleJoin}
           disabled={!joinName.trim()}
-          className="mt-4 w-full py-2.5 rounded-lg bg-accent text-surface-0 font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-cyan-300 transition-colors"
+          className="mt-4 w-full py-2.5 rounded bg-accent font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-accent-dim transition-colors"
+          style={{ color: '#0c0c0e' }}
         >
           Join Room
         </button>

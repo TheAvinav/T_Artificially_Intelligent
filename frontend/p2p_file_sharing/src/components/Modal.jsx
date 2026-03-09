@@ -17,17 +17,17 @@ export default function Modal({ open, onClose, children }) {
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="relative w-full max-w-md mx-4 bg-surface-2 border border-surface-4 rounded-2xl p-6 shadow-2xl animate-slide-up">
+      <div className="relative w-full max-w-sm mx-4 bg-raised border border-dim rounded-lg p-6 shadow-2xl animate-slide-down">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="absolute top-4 right-4 text-muted hover:text-secondary transition-colors"
         >
-          <X size={18} />
+          <X size={16} />
         </button>
         {children}
       </div>
