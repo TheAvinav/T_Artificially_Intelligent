@@ -42,6 +42,10 @@ function joinRoom(roomId, socketId, name) {
 
   if (!room) return null;
 
+  // Prevent duplicate joins
+  const existing = room.receivers.find(r => r.socketId === socketId);
+  if (existing) return room;
+
   room.receivers.push({
     socketId,
     name
@@ -80,6 +84,20 @@ function getRoom(roomId) {
 }
 
 
+function findRoomBySocket(socketId) {
+  for (const room of rooms.values()) {
+    if (room.owner.socketId === socketId) {
+      return { roomId: room.roomId, role: "owner" };
+    }
+    const receiver = room.receivers.find(r => r.socketId === socketId);
+    if (receiver) {
+      return { roomId: room.roomId, role: "receiver" };
+    }
+  }
+  return null;
+}
+
+
 function removeSocket(socketId) {
 
   for (const room of rooms.values()) {
@@ -101,5 +119,6 @@ module.exports = {
   joinRoom,
   addMetadata,
   getRoom,
+  findRoomBySocket,
   removeSocket
 };
