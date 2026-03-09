@@ -30,7 +30,7 @@ export default function ReceiverRoom() {
   const navigate = useNavigate();
 
   // If came from Home page, we have state; otherwise need to join
-  const [ setName] = useState(location.state?.name || '');
+  const [name, setName] = useState(location.state?.name || '');
   const [ownerName, setOwnerName] = useState(location.state?.ownerName || '');
   const [files, setFiles] = useState(location.state?.metadata || []);
   const [joined, setJoined] = useState(!!location.state?.name);
