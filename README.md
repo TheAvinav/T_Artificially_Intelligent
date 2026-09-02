@@ -1,145 +1,91 @@
-# warp
+---
 
-A browser-based, peer-to-peer file sharing app. Create a room, share a 6-character code plus a 6-digit PIN (or just a QR code), and files move directly between browsers over WebRTC — the server never sees the file bytes, only room membership and connection signaling.
+# Secure P2P File Transfer
 
-## Description
+A simple peer-to-peer file sharing app built with **React, Node.js, Socket.IO, and WebRTC**.
 
-`warp` is a room-based file-sharing tool. One person creates a room (the **owner**); anyone with the room code and PIN can join as a **participant**. By default only the owner can add files, but a room can be switched to "anyone can send files" so every participant can share into the same room — every file in the list shows who sent it. Once a file is requested, sender and receiver negotiate a direct `RTCPeerConnection`/`RTCDataChannel` and the bytes flow browser-to-browser in 64 KB chunks; the backend's only job is coordinating room membership and relaying the WebRTC handshake (offer/answer/ICE candidates).
+The server only handles **rooms and signaling**.
+Files are sent **directly between users**, not through the server.
 
-## Features
+---
 
-**Rooms & access**
-- Short, human-friendly 6-character room codes (unambiguous alphabet — no `0`/`O`, `1`/`I`/`L` confusion)
-- 6-digit PIN required to join, kept separate from the shareable link; 5 wrong attempts locks that client out for 60 seconds
-- QR code for the invite link, plus a one-tap Share button (native share sheet on mobile, clipboard copy on desktop)
-- Per-IP rate limiting on room creation and join attempts
-- Idle rooms (30 minutes with no activity) close automatically
-- **Owner reconnect grace period**: if the owner's connection drops (phone backgrounded, WiFi blip), the room stays open for 45 seconds and their browser silently reclaims it via a secret token when it reconnects — everyone else just sees a brief "reconnecting" banner instead of the room dying
-- Explicit **Leave Room** (participant) and **Close Room** (owner, with a confirmation dialog) controls
-- Whenever a room actually closes, everyone is redirected home with a reason-specific "disconnected" notice, instead of being left on a dead screen
+## How it works
 
-**Sharing & transfers**
-- Toggle who can add files: **owner only** (default) or **anyone in the room**
-- Every file shows who sent it ("sent by you" / "from Alice"); a non-owner's files disappear the instant they leave the room, so nobody's left with a dead "Receive" button
-- Multi-file and whole-folder uploads (drag-and-drop or a folder picker)
-- Chunked WebRTC transfer with backpressure handling (`bufferedAmount`-aware throttling)
-- Per-transfer live status (`connecting → negotiating → transferring → complete/failed/cancelled`) with a one-click retry on failure
-- Live throughput and ETA, refreshed every ~2.5s so the numbers are readable instead of flickering
-- Aggregate progress bar when several transfers are running at once
-- Pause, resume, and cancel a transfer mid-flight, from either side
-- No server-side file storage, ever — files never leave the two participating browsers
+1. A user creates a **room**.
+2. Others join using the **room ID or link**.
+3. The sender selects files.
+4. Peers connect using **WebRTC**.
+5. Files are transferred **browser to browser**.
 
-**Reliability & mobile**
-- A dropped mobile tab reconnects automatically the moment it's foregrounded again, instead of sitting invisibly disconnected
-- Responsive layout with no horizontal-scroll/overflow issues on small screens
+The server is only used to coordinate the connection.
 
-## Architecture Overview
+---
 
-```mermaid
-flowchart LR
-    A[Browser: Owner] <--> B[Socket.IO signaling server]
-    C[Browser: Participant] <--> B
-    A <--> D[WebRTC RTCDataChannel]
-    C <--> D
-    B --> E[In-memory room registry:\nmembership, OTP, upload policy, file metadata]
+## Tech Stack
+
+Frontend
+
+* React
+* Vite
+* Socket.IO client
+
+Backend
+
+* Node.js
+* Express
+* Socket.IO
+
+Networking
+
+* WebRTC (DataChannels)
+
+---
+
+## Project Structure
+
+```
+backend
+ └─ src
+    ├─ server.js
+    └─ room.js
+
+frontend
+ └─ src
+    ├─ hooks
+    │   └─ useWebRTC.js
+    ├─ lib
+    │   ├─ socket.js
+    │   └─ utils.js
+    ├─ pages
+    │   ├─ Home.jsx
+    │   ├─ SenderRoom.jsx
+    │   └─ ReceiverRoom.jsx
 ```
 
-The backend is intentionally thin: it tracks who's in each room, validates the PIN, relays WebRTC offer/answer/ICE messages between whichever two browsers are negotiating a transfer, and keeps a small in-memory record of file metadata (name/size/type/uploader) so everyone in the room knows what's available. The actual file bytes never pass through it — every transfer is a direct `RTCPeerConnection` between the sender's and receiver's browsers.
+---
 
-In production this repo deploys as **one service**: the Express backend serves the built React frontend as static files *and* handles Socket.IO on the same port, so there's a single URL and no cross-origin configuration required.
+## Run locally
 
-## Technology Stack
+Clone the repo
 
-**Frontend**
-- React 18 + React Router 6
-- Vite 5, Tailwind CSS 3
-- `socket.io-client` for signaling
-- `qrcode` for the invite QR code
-- `lucide-react` icons
-- Browser WebRTC APIs (`RTCPeerConnection`, `RTCDataChannel`)
-
-**Backend**
-- Node.js + Express 5
-- Socket.IO 4 (signaling transport)
-- `zod` for validating every inbound socket payload
-- `uuid` for file IDs, Node's built-in `crypto` for room codes/PINs/owner tokens
-- `dotenv` for local env var loading
-- A small hand-rolled in-memory rate limiter (Socket.IO events aren't covered by typical HTTP-only rate limiters)
-
-## Folder Structure
-
-```text
-package.json           # root scripts: `npm run build` / `npm start` build+run the whole app as one service
-render.yaml             # one-click Render deployment config
-
-backend/
-  .env.example
-  src/
-    server.js           # Socket.IO signaling + (in production) serves frontend/dist
-    room.js              # in-memory room registry: membership, OTP, upload policy, file metadata
-    schemas.js            # zod validation schema for every socket event
-    rateLimiter.js         # per-IP token-bucket limiter for create-room/join-room
-
-frontend/
-  .env.example
-  src/
-    App.jsx              # route table: / , /send/:roomId , /room/:roomId
-    pages/
-      Home.jsx             # create/join UI, "disconnected" popup
-      SenderRoom.jsx        # owner's room view (also downloads others' files when policy allows)
-      ReceiverRoom.jsx       # participant's room view (also uploads when policy allows)
-    hooks/
-      useWebRTC.js           # low-level sender/receiver WebRTC + speed/ETA tracking
-      useUploader.js           # "I'm hosting a file" — wraps the sender side per participant
-      useDownloader.js          # "I'm receiving a file" — wraps the receiver side per participant
-      useVisibilityReconnect.js  # forces a reconnect attempt when a backgrounded tab resumes
-    components/
-      PayloadList.jsx          # shared file-list rendering (own uploads vs. others' files)
-      Modal.jsx
-    lib/
-      socket.js               # Socket.IO client singleton
-      utils.js                  # byte/speed/duration formatting helpers
+```
+git clone <repo-url>
 ```
 
-## Prerequisites
+### Backend
 
-- Node.js 18+
-- npm
-- A browser that supports WebRTC
-- Owner and participants must each be able to reach the signaling server, and their networks must allow a direct WebRTC connection (STUN-only — see Known Limitations)
-
-## Environment Variables
-
-Copy each `.env.example` to `.env` and adjust as needed.
-
-**`backend/.env`**
-| Variable | Default | Purpose |
-|---|---|---|
-| `FRONTEND_URL` | `http://localhost:5173` | Origin(s) allowed to talk to the backend, comma-separated if more than one. Only matters for cross-origin setups (local split-dev, or a frontend hosted separately from this backend) — ignored by the browser entirely when this backend serves its own frontend build. |
-| `PORT` | `3000` | Port the server listens on. Hosting platforms like Render set this automatically. |
-
-**`frontend/.env`**
-| Variable | Default | Purpose |
-|---|---|---|
-| `VITE_SERVER_URL` | *(unset)* | Only needed for local split-dev (Vite on `:5173` calling a separately-running backend on `:3000`). Leave unset in production — the backend serves this app itself, so the client connects to whatever origin the page was loaded from. |
-
-## Installation
-
-From the repository root:
-
-```bash
-npm run build
+```
+cd backend
+npm install
+node src/server.js
 ```
 
-This installs both `backend/` and `frontend/` dependencies and builds the frontend (`frontend/dist`). For day-to-day development you'll usually install each side separately instead — see Running Locally.
+### Frontend
 
-## Running Locally
-
-**Split dev (hot-reload, recommended while developing)** — frontend and backend run as separate processes on separate ports, talking cross-origin:
-
-```bash
-cd backend && npm install && npm run dev     # signaling server on :3000
-cd frontend && npm install && npm run dev    # Vite dev server on :5173
+```
+cd frontend
+npm install
+npm run dev
 ```
 
 Open `http://localhost:5173`. `frontend/.env`'s `VITE_SERVER_URL` points it at the backend.
@@ -270,4 +216,6 @@ A room's entire state lives in a single process-local `Map` — restarting the b
 
 ## License
 
-No LICENSE file is present in this repository.
+Unlicense
+
+---
