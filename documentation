@@ -1,0 +1,818 @@
+Secure P2P File Transfer – Architecture & Server Documentation
+
+
+## Overview
+
+This project implements a **secure peer-to-peer file transfer system** built using a **two-plane architecture**:
+
+1. **Control Plane (Signaling Server)**
+    
+2. **Data Plane (Peer-to-Peer Transfer)**
+    
+
+The purpose of separating these two planes is to ensure that the **central server never handles the actual file data**. Instead, it only manages **authentication, coordination, and metadata exchange** between peers.
+
+The system is designed so that:
+
+- The server **only manages signaling and metadata**
+    
+- The **actual file transfer happens directly between peers**
+    
+- **File payloads never pass through the central server**
+    
+
+This architecture improves:
+
+- Scalability
+    
+- Privacy
+    
+- Bandwidth efficiency
+    
+- Latency
+    
+
+---
+
+# System Architecture
+
+The system follows a **two-plane distributed architecture**.
+
+## 1. Control Plane (Signaling Server)
+
+The **control plane** is responsible for coordination between peers.
+
+Responsibilities include:
+
+- Creating transfer sessions
+    
+- Managing rooms
+    
+- Handling peer discovery
+    
+- Exchanging file metadata
+    
+- Signaling between peers
+    
+
+The control plane is implemented using:
+
+- **Node.js**
+    
+- **Express**
+    
+- **Socket.IO**
+    
+
+The server maintains **temporary in-memory state** for active rooms and participants.
+
+Important design principle:
+
+> The control plane **never transfers file data**.  
+> It only handles **coordination and signaling**.
+
+---
+
+## 2. Data Plane (Peer-to-Peer Transfer)
+
+The **data plane** is responsible for transferring files directly between peers.
+
+Responsibilities include:
+
+- Establishing a **direct connection between peers**
+    
+- Transferring file data
+    
+- Avoiding routing large files through the server
+    
+
+Peer-to-peer communication is enabled using **WebRTC**.
+
+WebRTC allows browsers to create **direct encrypted connections** with each other.
+
+The signaling server is used only to:
+
+- Exchange connection information
+    
+- Share metadata
+    
+- Allow peers to discover each other
+    
+
+Once the connection is established, **the server is no longer involved in the transfer**.
+
+---
+
+# Technology Stack
+
+## Backend
+
+- **Node.js**
+    
+- **Express**
+    
+- **Socket.IO**
+    
+
+The backend acts as the **signaling server**.
+
+It manages:
+
+- rooms
+    
+- metadata
+    
+- peer discovery
+    
+- event communication
+    
+
+---
+
+## Real-Time Communication
+
+**Socket.IO** is used for:
+
+- real-time communication between server and clients
+    
+- event-driven messaging
+    
+- room management
+    
+- peer discovery
+    
+
+All coordination happens using **WebSocket events**.
+
+---
+
+## Peer-to-Peer Communication
+
+**WebRTC** is used for:
+
+- establishing secure peer connections
+    
+- transferring file data directly between peers
+    
+
+WebRTC provides:
+
+- encrypted communication channels
+    
+- NAT traversal capabilities
+    
+- low-latency data transfer
+    
+
+The server helps with **signaling**, but **actual file transfer occurs directly between peers**.
+
+---
+
+# File Transfer Lifecycle
+
+The system operates through multiple phases.
+
+---
+
+# Phase 1 — Room Creation
+
+## Sender (A)
+
+The sender initiates the transfer by logging into the application and requesting the creation of a room.
+
+Sender sends a request to:
+
+[[Server (Control Plane)]]
+
+---
+
+## Server (Control Plane)
+
+The server creates a new room and stores metadata for the session.
+
+The server is responsible for:
+
+- hosting transfer sessions
+    
+- managing participants
+    
+- coordinating communication
+    
+
+It stores metadata about Sender (A) so that receivers joining later can access the session information.
+
+---
+
+## Receivers Join
+
+Receiver (B), Receiver (C), and Receiver (D) log into the website.
+
+They request the **room link or room ID** from Sender (A) and use it to join the room.
+
+The server adds them to the room and informs the sender.
+
+---
+
+# Phase 2 — File Transfer Request
+
+## Sender (A) with Room
+
+Sender (A) prepares the file data for transfer.
+
+The sender initializes an **"Accept or Reject" request** to all receivers in the room.
+
+This allows receivers to decide whether they want to participate in the transfer.
+
+---
+
+## Server with Room
+
+The server forwards the **Accept or Reject request** to all receivers in the room.
+
+The server acts purely as a **signaling intermediary**.
+
+It does **not receive or store the file itself**.
+
+---
+
+## Receiver Responses
+
+Receivers respond to the request.
+
+Example:
+
+Receiver (B) → Accept  
+Receiver (C) → Accept  
+Receiver (D) → Reject
+
+Receivers who reject remain in the room but do not participate in the file transfer.
+
+---
+
+# Phase 3 — Connection Preparation
+
+## Sender (A) Ready
+
+Sender (A) receives the responses from the server showing which receivers accepted the request.
+
+The system now prepares for peer-to-peer connections.
+
+---
+
+## Server (Maintain Connections)
+
+At this stage the server transitions into a **connection maintenance role**.
+
+It maintains:
+
+- room membership
+    
+- signaling messages
+    
+- late joiners
+    
+
+Important behaviors:
+
+- New members joining the room can still receive the transfer request.
+    
+- Members who rejected the request remain idle unless they leave and rejoin the room.
+    
+
+At this stage the **control plane phase is effectively complete**.
+
+---
+
+# Phase 4 — Peer Connection Establishment
+
+## Sender (A) with Persistent Connection
+
+Sender (A) now establishes **persistent connections** with receivers who accepted the request.
+
+These connections are created using **WebRTC**.
+
+Key characteristics:
+
+- direct peer-to-peer communication
+    
+- encrypted channels
+    
+- independent from the server
+    
+
+The backend now logically separates into:
+
+Control Plane → signaling  
+Data Plane → peer-to-peer transfer
+
+---
+
+## Receiver (B, C) with Persistent Connection
+
+Receiver (B) and Receiver (C) establish WebRTC connections with Sender (A).
+
+File transfer now occurs **entirely between peers**.
+
+Both ends maintain metadata including:
+
+- file size
+    
+- transfer progress
+    
+- connection state
+    
+
+This metadata allows **transfer recovery if a peer disconnects**.
+
+---
+
+# Phase 5 — File Transfer
+
+Sender (A) sends the file **chunk-wise**.
+
+Chunking ensures:
+
+- reliability
+    
+- resumability
+    
+- progress tracking
+    
+
+---
+
+## Receiver (B) Still Active
+
+Receiver (B) remains connected.
+
+Sender continues sending chunks until the transfer completes.
+
+---
+
+## Receiver (C) Disconnects
+
+If Receiver (C) disconnects:
+
+- the receiver retains metadata about the transfer
+    
+- the receiver knows how much data was already received
+    
+- when reconnecting, the transfer can resume from the last chunk
+    
+
+This allows **resumable transfers**.
+
+---
+
+## Receiver (D) Joins Later
+
+Receiver (D) may join later and accept the request.
+
+In this case:
+
+- Sender detects the new receiver
+    
+- transfer begins from the beginning for that receiver
+    
+
+---
+
+# Phase 6 — Transfer Completion
+
+## Sender (A) Completes Transfer
+
+After all chunks are sent:
+
+- peer connections close
+    
+- transfers finish
+    
+
+However, participants remain inside the **room session**.
+
+---
+
+## Server (Room Intact)
+
+The server continues maintaining the room.
+
+The system returns to the **control plane state**, ready for future transfers.
+
+---
+
+# Server Implementation
+
+The backend consists of two main modules:
+
+- **server.js**
+    
+- **room.js**
+    
+
+---
+
+# Room Management (room.js)
+
+Room management uses an **in-memory Map** to store active transfer sessions.
+
+Each room represents a **file transfer session between one sender and multiple receivers**.
+
+Room structure:
+
+```
+{
+  roomId,
+  owner: { socketId, name },
+  receivers: [{ socketId, name }],
+  metadata: []
+}
+```
+
+### Field Descriptions
+
+|Field|Description|
+|---|---|
+|roomId|Unique identifier for the transfer session|
+|owner|Peer initiating the transfer|
+|receivers|Peers receiving the files|
+|metadata|File metadata shared by the sender|
+
+Since rooms are stored in memory:
+
+- rooms disappear if the server restarts
+    
+- no database is required
+    
+
+---
+
+# Room Operations
+
+## Create Room
+
+```
+createRoom(ownerSocketId, ownerName)
+```
+
+Process:
+
+1. Generate a unique roomId
+    
+2. Store the room in memory
+    
+3. Assign creator as owner
+    
+4. Initialize receivers and metadata lists
+    
+
+Returns the room object.
+
+---
+
+## Join Room
+
+```
+joinRoom(roomId, socketId, name)
+```
+
+Process:
+
+1. Look up the room using roomId
+    
+2. Add the peer to the receivers list
+    
+3. Return the updated room
+    
+
+If the room does not exist, `null` is returned.
+
+---
+
+## Add File Metadata
+
+```
+addMetadata(roomId, files)
+```
+
+Each file entry contains:
+
+- fileId
+    
+- name
+    
+- size
+    
+- type
+    
+- uploadedAt
+    
+
+Example metadata:
+
+```
+{
+  fileId,
+  name,
+  size,
+  type,
+  uploadedAt
+}
+```
+
+This metadata is broadcast to all receivers.
+
+---
+
+## Get Room
+
+```
+getRoom(roomId)
+```
+
+Returns the room object.
+
+---
+
+## Remove Socket
+
+```
+removeSocket(socketId)
+```
+
+Behavior:
+
+- If the owner disconnects → the entire room is deleted
+    
+- If a receiver disconnects → removed from receiver list
+    
+
+---
+
+# Signaling Server (server.js)
+
+The signaling server uses:
+
+- **Express** for HTTP server creation
+    
+- **Socket.IO** for real-time communication
+    
+- **CORS** to allow cross-origin requests
+    
+
+Server initialization:
+
+```javascript
+const io = new Server(server, {
+  cors: { origin: "*" },
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
+```
+
+These settings manage:
+
+- cross-origin access
+    
+- connection health monitoring
+    
+- client keep-alive
+    
+
+---
+
+# Socket Events
+
+The system is **event-driven using Socket.IO**.
+
+---
+
+## Client Connection
+
+Event:
+
+```
+connection
+```
+
+Each connected client receives a unique identifier:
+
+```
+socket.id
+```
+
+---
+
+## Create Room
+
+Event:
+
+```
+create-room
+```
+
+Payload:
+
+```
+{
+  "name": "sender_name"
+}
+```
+
+Response:
+
+```
+room-created
+```
+
+```
+{
+  "roomId": "...",
+  "roomLink": "http://localhost:5173/room/<roomId>"
+}
+```
+
+---
+
+## Join Room
+
+Event:
+
+```
+join-room
+```
+
+Payload:
+
+```
+{
+  "roomId": "...",
+  "name": "receiver_name"
+}
+```
+
+Receiver response:
+
+```
+joined-room
+```
+
+```
+{
+  "ownerName": "...",
+  "metadata": [...]
+}
+```
+
+Owner notification:
+
+```
+receiver-joined
+```
+
+---
+
+## File Metadata Upload
+
+Event:
+
+```
+file-metadata
+```
+
+Payload:
+
+```
+{
+  "roomId": "...",
+  "files": [...]
+}
+```
+
+Server behavior:
+
+- store metadata in the room
+    
+- broadcast metadata to receivers
+    
+- acknowledge sender
+    
+
+Events emitted:
+
+- `new-files`
+    
+- `metadata-ack`
+    
+
+---
+
+## Client Disconnect
+
+Event:
+
+```
+disconnect
+```
+
+Server behavior:
+
+- remove socket from the room
+    
+- delete the room if the owner disconnects
+    
+
+---
+
+# Key Design Principles
+
+## Server Does Not Handle File Data
+
+The server only handles:
+
+- signaling
+    
+- metadata
+    
+- coordination
+    
+
+Actual file content is transferred peer-to-peer.
+
+---
+
+## Temporary Session State
+
+Rooms are stored in memory.
+
+Advantages:
+
+- no database dependency
+    
+- simple architecture
+    
+
+Limitation:
+
+rooms disappear if the server restarts.
+
+---
+
+## Event-Driven Architecture
+
+The system uses **WebSocket events**.
+
+Advantages:
+
+- real-time updates
+    
+- low latency communication
+    
+- efficient peer coordination
+    
+
+---
+
+# Current Limitations
+
+The current implementation is intentionally minimal.
+
+Not yet implemented:
+
+- authentication
+    
+- encryption layer configuration
+    
+- persistent storage
+    
+- access control
+    
+- full file transfer protocol implementation
+    
+- advanced NAT traversal
+    
+- peer reliability management
+    
+
+These are planned improvements for future development.
+
+---
+
+# Summary
+
+This project demonstrates a **scalable peer-to-peer file transfer architecture** that separates:
+
+Control Plane → coordination and signaling  
+Data Plane → direct peer communication
+
+Technologies used:
+
+- Node.js
+    
+- Express
+    
+- Socket.IO
+    
+- WebRTC
+    
+
+The architecture ensures that **the server never handles file data**, enabling **secure, scalable, and efficient peer-to-peer file sharing**.
