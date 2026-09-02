@@ -6,6 +6,20 @@ export function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+export function formatSpeed(bytesPerSecond) {
+  if (!bytesPerSecond || bytesPerSecond <= 0) return '';
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+export function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined || !isFinite(seconds) || seconds < 0) return '';
+  if (seconds < 1) return '<1s left';
+  if (seconds < 60) return `${Math.round(seconds)}s left`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}m ${secs}s left`;
+}
+
 export function getFileIcon(type) {
   if (!type) return 'file';
   if (type.startsWith('image/')) return 'image';

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: warp
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Optional: only needed if you host the frontend separately from this
+      # backend (e.g. two services, or a frontend on another platform). When
+      # this service serves its own frontend build (the default setup here),
+      # requests are same-origin and this var isn't consulted at all.
+      - key: FRONTEND_URL
+        sync: false
