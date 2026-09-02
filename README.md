@@ -261,12 +261,12 @@ A room's entire state lives in a single process-local `Map` — restarting the b
 - **A regular participant's uploads don't survive their own disconnect** — unlike the owner (who gets a 45s reconnect grace period via a secret token), a non-owner who drops loses their uploaded files immediately; this is a deliberate scope cut, not a bug, since there's no way to verify a reconnecting participant's identity without a similar token mechanism.
 - **No file-integrity verification** — WebRTC's DataChannel is reliable and ordered by default, but there's no application-level checksum comparing the sent and received file.
 
-## Contributing Guidelines
+## Contributors
 
-- Keep the backend focused on signaling/coordination — prefer extending the Socket.IO event contract over introducing REST endpoints.
-- New file-transfer logic belongs in `useWebRTC.js`/`useUploader.js`/`useDownloader.js`, not directly in page components.
-- Validate every new socket event's payload with a `zod` schema in `schemas.js`.
-- Preserve the room/file metadata shapes above if you add new fields — extend, don't rename.
+* Abhinay Ragam
+* Hrushikesh Musaloj
+* Jayasai Badigeru
+* TL: Avinav Mendu
 
 ## License
 
