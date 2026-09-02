@@ -95,6 +95,47 @@ const app = express();
 
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 
+// ─── TURN CREDENTIALS ───
+//
+// STUN alone can't traverse every NAT (symmetric NAT, carrier-grade NAT on
+// mobile networks, some corporate firewalls) — those connections need a TURN
+// relay as a fallback. This proxies short-lived credentials from Metered's
+// free tier (metered.ca) so the API key never ships in the frontend bundle.
+// If it's not configured, this responds with an empty list and the frontend
+// falls back to STUN-only (same behavior as before TURN support existed).
+const METERED_APP_NAME = process.env.METERED_APP_NAME;
+const METERED_API_KEY = process.env.METERED_API_KEY;
+
+let turnCredentialsCache = null;
+let turnCredentialsCacheAt = 0;
+const TURN_CACHE_TTL_MS = 5 * 60 * 1000;
+
+app.get("/api/ice-servers", async (req, res) => {
+  if (!METERED_APP_NAME || !METERED_API_KEY) {
+    return res.json([]);
+  }
+
+  const now = Date.now();
+  if (turnCredentialsCache && now - turnCredentialsCacheAt < TURN_CACHE_TTL_MS) {
+    return res.json(turnCredentialsCache);
+  }
+
+  try {
+    const response = await fetch(
+      `https://${METERED_APP_NAME}.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`
+    );
+    if (!response.ok) throw new Error(`Metered API responded ${response.status}`);
+
+    const iceServers = await response.json();
+    turnCredentialsCache = iceServers;
+    turnCredentialsCacheAt = now;
+    res.json(iceServers);
+  } catch (err) {
+    console.error("Failed to fetch TURN credentials:", err.message);
+    res.json([]); // fail open to STUN-only rather than breaking transfers entirely
+  }
+});
+
 // Serve the built frontend (frontend/dist) so the whole app is one
 // deployable service — this is what makes a single Render/Railway/etc.
 // web service work: it builds the frontend, then this process serves both
@@ -110,9 +151,10 @@ if (fs.existsSync(path.join(FRONTEND_DIST, "index.html"))) {
 
   // SPA fallback: any non-file route (e.g. /room/ABC123) should still load
   // index.html so React Router can take over client-side. Socket.IO claims
-  // /socket.io/* itself before Express ever sees those requests, but the
-  // exclusion below is kept as a belt-and-suspenders guard.
-  app.get(/^(?!\/socket\.io\/).*/, (req, res) => {
+  // /socket.io/* itself before Express ever sees those requests, and the
+  // /api/ route above is already registered first — the exclusions below
+  // are kept as a belt-and-suspenders guard regardless.
+  app.get(/^(?!\/(socket\.io|api)\/).*/, (req, res) => {
     res.sendFile(path.join(FRONTEND_DIST, "index.html"));
   });
 

@@ -113,11 +113,23 @@ This app deploys as a **single service**: the Express backend serves the built R
 
 1. Push this repo to GitHub.
 2. In Render, "New +" → "Blueprint", point it at the repo — `render.yaml` at the root configures the service (build command `npm run build`, start command `npm start`) automatically. Or create a Web Service manually with those same two commands.
-3. Deploy. No env vars are required for a single-service deployment.
+3. Deploy. No env vars are strictly required for a single-service deployment, but see **TURN server (recommended)** below — without it, transfers only work reliably between devices on the same network.
 
 Railway or Fly.io work the same way (same build/start commands); a plain VPS works too (`npm run build && npm start`, kept alive with something like `pm2` or a systemd unit).
 
 **Why not Vercel:** Vercel's serverless functions are stateless and short-lived — they don't hold the persistent process this app needs. The backend keeps rooms in an in-memory `Map` and relies on long-lived Socket.IO connections (WebSocket, with HTTP long-polling fallback); both break under Vercel's serverless model (state resets between invocations, and the WebSocket/polling handshake isn't reliably supported). Vercel is a fine place to host *just* the static frontend build if you want to split the deployment — set `FRONTEND_URL` on the backend to that Vercel URL and `VITE_SERVER_URL` on the frontend to the backend's URL — but the backend itself needs a host with a real persistent process.
+
+### TURN server (recommended)
+
+STUN alone (the default) only lets two peers connect directly when their networks are cooperative — it fails between many real-world network pairs (mobile data/CGNAT, symmetric NAT, some corporate firewalls), even though it works fine when both devices share one network (e.g. a phone on a laptop's hotspot). Fixing this needs a TURN relay as fallback:
+
+1. Sign up free at [metered.ca/tools/openrelay](https://www.metered.ca/tools/openrelay/) — 20GB/month free, no credit card.
+2. From their dashboard, get your app name (subdomain) and API key.
+3. Set two env vars on your host (Render: service → Environment):
+   - `METERED_APP_NAME`
+   - `METERED_API_KEY`
+
+The backend proxies credentials from these through `GET /api/ice-servers` so the API key never ships to the browser. Leave them unset and the app just falls back to STUN-only, same as before.
 
 ## Usage Walkthrough
 
@@ -203,7 +215,7 @@ A room's entire state lives in a single process-local `Map` — restarting the b
 
 - **No persistence** — all state is in-memory; a server restart or the idle-timeout sweep wipes rooms.
 - **No account system** — a room is only as private as its code + PIN combination.
-- **No TURN server** — only STUN is configured for ICE, so a direct connection can fail behind symmetric NATs or restrictive corporate firewalls with no fallback relay.
+- **TURN server is optional and off by default** — without `METERED_APP_NAME`/`METERED_API_KEY` set (see Deployment → TURN server), only STUN is used for ICE, so a direct connection can fail behind symmetric NATs, mobile carrier CGNAT, or restrictive corporate firewalls with no fallback relay.
 - **A regular participant's uploads don't survive their own disconnect** — unlike the owner (who gets a 45s reconnect grace period via a secret token), a non-owner who drops loses their uploaded files immediately; this is a deliberate scope cut, not a bug, since there's no way to verify a reconnecting participant's identity without a similar token mechanism.
 - **No file-integrity verification** — WebRTC's DataChannel is reliable and ordered by default, but there's no application-level checksum comparing the sent and received file.
 

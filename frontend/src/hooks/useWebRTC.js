@@ -1,12 +1,42 @@
 import { useRef, useCallback } from 'react';
-import socket from '../lib/socket';
+import socket, { SERVER_URL } from '../lib/socket';
 
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ]
-};
+const FALLBACK_STUN_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+// STUN alone can't traverse every NAT (symmetric NAT, carrier-grade NAT on
+// mobile networks, some corporate firewalls) — those connections need a TURN
+// relay as a fallback. The backend proxies short-lived TURN credentials from
+// /api/ice-servers (see server.js) so the credentials themselves never ship
+// in the frontend bundle. If that endpoint isn't configured or fails, we
+// fail open to STUN-only rather than breaking the whole app.
+let iceServersCache = null;
+let iceServersCacheAt = 0;
+const ICE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getIceServers() {
+  const now = Date.now();
+  if (iceServersCache && now - iceServersCacheAt < ICE_CACHE_TTL_MS) {
+    return iceServersCache;
+  }
+
+  let turnServers = [];
+  try {
+    const res = await fetch(`${SERVER_URL}/api/ice-servers`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) turnServers = data;
+    }
+  } catch {
+    // network hiccup fetching credentials — fall back to STUN-only below
+  }
+
+  iceServersCache = { iceServers: [...FALLBACK_STUN_SERVERS, ...turnServers] };
+  iceServersCacheAt = now;
+  return iceServersCache;
+}
 
 const CHUNK_SIZE = 64 * 1024; // 64KB chunks
 const SPEED_WINDOW_MS = 3000; // window used to compute throughput
@@ -74,12 +104,14 @@ export function useSenderWebRTC(roomId, filesMapRef, onProgress, onComplete, onS
   };
 
   // Called when a receiver requests a file
-  const handleFileRequest = useCallback(({ fileId, receiverSocketId }) => {
+  const handleFileRequest = useCallback(async ({ fileId, receiverSocketId }) => {
     const key = getKey(receiverSocketId, fileId);
+
+    const iceServers = await getIceServers();
 
     closeConnection(key);
 
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection(iceServers);
     peerConnections.current.set(key, pc);
     transferState.current.set(key, {
       offset: 0,
@@ -312,8 +344,10 @@ export function useReceiverWebRTC(onProgress, onFileReceived, onStatusChange) {
   }, [setStatus]);
 
   // Handle offer from sender
-  const handleOffer = useCallback(({ offer, fileId, senderSocketId }) => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+  const handleOffer = useCallback(async ({ offer, fileId, senderSocketId }) => {
+    const iceServers = await getIceServers();
+
+    const pc = new RTCPeerConnection(iceServers);
     peerConnections.current.set(fileId, pc);
 
     setStatus(fileId, 'negotiating');
