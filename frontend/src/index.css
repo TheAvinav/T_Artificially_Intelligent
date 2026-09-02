@@ -27,6 +27,14 @@
   --red: #d9534f;
 }
 
+html, body {
+  /* Defensive: a decorative element (blur bleed, fixed-width badge, etc.)
+     overflowing the viewport should never make the whole page scroll
+     sideways — clip it here instead of chasing every offender. */
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);

@@ -1,0 +1,18 @@
+# Dependencies and build output (each package also has its own copy of
+# these rules, but this catches anything at the repo root too)
+node_modules
+dist
+dist-ssr
+*.log
+
+# Environment files — never commit real secrets/config, only .env.example
+.env
+.env.local
+.env.*.local
+
+# Editor / OS junk
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db

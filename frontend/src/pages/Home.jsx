@@ -1,24 +1,38 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Link2, Shield, Zap, Users } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowRight, Link2, Shield, Zap, Users, WifiOff } from 'lucide-react';
 import Modal from '../components/Modal';
 import socket from '../lib/socket';
 
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState('');
+  const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [disconnectedReason, setDisconnectedReason] = useState(location.state?.disconnectedReason || null);
+  const joinIdRef = useRef('');
+  const joinOtpRef = useRef('');
+
+  useEffect(() => {
+    // Consume the router state once so a refresh or back-navigation doesn't
+    // re-show the popup.
+    if (location.state?.disconnectedReason) {
+      window.history.replaceState({}, document.title);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!socket.connected) socket.connect();
 
-    socket.on('room-created', ({ roomId }) => {
+    socket.on('room-created', ({ roomId, otp: roomOtp, ownerToken, uploadPolicy }) => {
       setLoading(false);
-      navigate(`/send/${roomId}`, { state: { name } });
+      navigate(`/send/${roomId}`, { state: { name, otp: roomOtp, ownerToken, uploadPolicy } });
     });
 
     socket.on('room-error', (msg) => {
@@ -26,9 +40,11 @@ export default function Home() {
       setLoading(false);
     });
 
-    socket.on('joined-room', ({ ownerName, metadata }) => {
+    socket.on('joined-room', ({ ownerName, ownerSocketId, metadata, uploadPolicy, receivers }) => {
       setLoading(false);
-      navigate(`/room/${roomCode}`, { state: { name, ownerName, metadata } });
+      navigate(`/room/${joinIdRef.current}`, {
+        state: { name, ownerName, ownerSocketId, metadata, uploadPolicy, receivers, otp: joinOtpRef.current }
+      });
     });
 
     return () => {
@@ -36,7 +52,7 @@ export default function Home() {
       socket.off('room-error');
       socket.off('joined-room');
     };
-  }, [navigate, name, roomCode]);
+  }, [navigate, name]);
 
   const handleCreate = () => {
     if (!name.trim()) return;
@@ -45,13 +61,16 @@ export default function Home() {
   };
 
   const handleJoin = () => {
-    if (!name.trim() || !roomCode.trim()) return;
+    if (!name.trim() || !roomCode.trim() || otp.trim().length !== 6) return;
     setLoading(true);
     setError('');
     let id = roomCode.trim();
-    const urlMatch = id.match(/\/room\/([a-f0-9-]+)/i);
+    const urlMatch = id.match(/\/room\/([A-Za-z0-9]{6})/);
     if (urlMatch) id = urlMatch[1];
-    socket.emit('join-room', { roomId: id, name: name.trim() });
+    id = id.toUpperCase();
+    joinIdRef.current = id;
+    joinOtpRef.current = otp.trim();
+    socket.emit('join-room', { roomId: id, name: name.trim(), otp: otp.trim() });
   };
 
   return (
@@ -71,9 +90,9 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-20">
+      <main className="relative flex-1 flex flex-col items-center justify-center px-6 pb-20 overflow-hidden">
         {/* Warm ambient glow */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[400px] rounded-full bg-accent/[0.04] blur-[100px] pointer-events-none" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[500px] h-[400px] rounded-full bg-accent/[0.04] blur-[100px] pointer-events-none" />
 
         <div className="relative max-w-xl text-center stagger">
           {/* Badge */}
@@ -104,7 +123,7 @@ export default function Home() {
               <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
             </button>
             <button
-              onClick={() => { setShowJoin(true); setName(''); setRoomCode(''); setError(''); }}
+              onClick={() => { setShowJoin(true); setName(''); setRoomCode(''); setOtp(''); setError(''); }}
               className="flex items-center gap-2.5 px-6 py-3 rounded-lg border border-dim text-secondary font-semibold text-sm tracking-wide hover:bg-raised hover:text-[var(--text-primary)] transition-all duration-200"
             >
               <Link2 size={15} />
@@ -138,9 +157,9 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-dim px-6 py-4 flex items-center justify-between">
+      <footer className="border-t border-dim px-6 py-4 flex flex-col sm:flex-row items-center gap-1 sm:gap-0 sm:justify-between text-center">
         <span className="font-mono text-[10px] text-muted">warp v1.0</span>
-        <span className="font-mono text-[10px] text-muted">built for T_Artificially_Intelligent</span>
+        <span className="font-mono text-[10px] text-muted">Built by Team: Artificially Intelligent</span>
       </footer>
 
       {/* Create Room Modal */}
@@ -180,7 +199,7 @@ export default function Home() {
           </div>
           <h2 className="font-semibold text-sm">Join a Room</h2>
         </div>
-        <p className="text-xs text-muted mb-5 ml-7">Enter the room code or paste the link.</p>
+        <p className="text-xs text-muted mb-5 ml-7">Enter the room code or paste the link, plus the PIN the sender shared with you.</p>
         <label className="block font-mono text-[10px] text-muted mb-1.5 uppercase tracking-wider">Name</label>
         <input
           type="text"
@@ -196,17 +215,44 @@ export default function Home() {
           value={roomCode}
           onChange={(e) => setRoomCode(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-          placeholder="Paste link or room ID"
-          className="w-full px-3 py-2.5 rounded bg-base border border-dim text-sm placeholder:text-muted focus:outline-none focus:border-accent/40 transition-colors font-mono"
+          placeholder="Paste link or room code"
+          className="w-full px-3 py-2.5 rounded bg-base border border-dim text-sm placeholder:text-muted focus:outline-none focus:border-accent/40 transition-colors font-mono mb-3"
+        />
+        <label className="block font-mono text-[10px] text-muted mb-1.5 uppercase tracking-wider">PIN</label>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={otp}
+          onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+          placeholder="6-digit PIN"
+          className="w-full px-3 py-2.5 rounded bg-base border border-dim text-sm placeholder:text-muted focus:outline-none focus:border-accent/40 transition-colors font-mono tracking-[0.3em]"
         />
         {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
         <button
           onClick={handleJoin}
-          disabled={!name.trim() || !roomCode.trim() || loading}
+          disabled={!name.trim() || !roomCode.trim() || otp.trim().length !== 6 || loading}
           className="mt-4 w-full py-2.5 rounded bg-accent font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-accent-dim transition-colors"
           style={{ color: '#0c0c0e' }}
         >
           {loading ? 'Joining...' : 'Join Room'}
+        </button>
+      </Modal>
+
+      {/* Disconnected notice */}
+      <Modal open={!!disconnectedReason} onClose={() => setDisconnectedReason(null)}>
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-5 h-5 rounded bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+            <WifiOff size={10} className="text-red-400" />
+          </div>
+          <h2 className="font-semibold text-sm">Disconnected</h2>
+        </div>
+        <p className="text-xs text-muted mb-5 ml-7">{disconnectedReason}</p>
+        <button
+          onClick={() => setDisconnectedReason(null)}
+          className="w-full py-2.5 rounded bg-surface border border-dim text-sm text-secondary hover:bg-overlay transition-colors"
+        >
+          OK
         </button>
       </Modal>
     </div>
